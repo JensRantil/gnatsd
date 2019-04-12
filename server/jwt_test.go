@@ -57,11 +57,14 @@ func addAccountToMemResolver(s *Server, pub, jwtclaim string) {
 	s.mu.Unlock()
 }
 
-func createClient(t *testing.T, s *Server, akp nkeys.KeyPair) (*client, *bufio.Reader, string) {
+func createClient(t *testing.T, s *Server, akp nkeys.KeyPair, optIssuerAccount string) (*client, *bufio.Reader, string) {
 	t.Helper()
 	nkp, _ := nkeys.CreateUser()
 	pub, _ := nkp.PublicKey()
 	nuc := jwt.NewUserClaims(pub)
+	if optIssuerAccount != "" {
+		nuc.IssuerAccount = optIssuerAccount
+	}
 	ujwt, err := nuc.Encode(akp)
 	if err != nil {
 		t.Fatalf("Error generating user JWT: %v", err)
@@ -127,7 +130,7 @@ func TestJWTUser(t *testing.T) {
 		t.Fatalf("Error generating account JWT: %v", err)
 	}
 
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 
 	// PING needed to flush the +OK/-ERR to us.
 	// This should fail too since no account resolver is defined.
@@ -142,7 +145,7 @@ func TestJWTUser(t *testing.T) {
 	buildMemAccResolver(s)
 	addAccountToMemResolver(s, apub, ajwt)
 
-	c, cr, cs = createClient(t, s, akp)
+	c, cr, cs = createClient(t, s, akp, "")
 
 	go c.parse([]byte(cs))
 	l, _ = cr.ReadString('\n')
@@ -178,7 +181,7 @@ func TestJWTUserBadTrusted(t *testing.T) {
 	}
 	addAccountToMemResolver(s, apub, ajwt)
 
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ := cr.ReadString('\n')
 	if !strings.HasPrefix(l, "-ERR ") {
@@ -384,7 +387,7 @@ func TestJWTAccountExpired(t *testing.T) {
 	addAccountToMemResolver(s, apub, ajwt)
 
 	// Create a new user
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ := cr.ReadString('\n')
 	if !strings.HasPrefix(l, "-ERR ") {
@@ -413,7 +416,7 @@ func TestJWTAccountExpiresAfterConnect(t *testing.T) {
 	addAccountToMemResolver(s, apub, ajwt)
 
 	// Create a new user
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 
 	expectPong := func(cr *bufio.Reader) {
 		t.Helper()
@@ -437,7 +440,7 @@ func TestJWTAccountExpiresAfterConnect(t *testing.T) {
 	}
 
 	// Now make sure that accounts that have expired return an error.
-	c, cr, cs = createClient(t, s, akp)
+	c, cr, cs = createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ = cr.ReadString('\n')
 	if !strings.HasPrefix(l, "-ERR ") {
@@ -466,7 +469,7 @@ func TestJWTAccountRenew(t *testing.T) {
 	addAccountToMemResolver(s, apub, ajwt)
 
 	// Create a new user
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ := cr.ReadString('\n')
 	if !strings.HasPrefix(l, "-ERR ") {
@@ -490,7 +493,7 @@ func TestJWTAccountRenew(t *testing.T) {
 	s.updateAccountClaims(acc, nac)
 
 	// Now make sure we can connect.
-	c, cr, cs = createClient(t, s, akp)
+	c, cr, cs = createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ = cr.ReadString('\n')
 	if !strings.HasPrefix(l, "PONG") {
@@ -524,7 +527,7 @@ func TestJWTAccountRenewFromResolver(t *testing.T) {
 	}
 
 	// Create a new user
-	c, cr, cs := createClient(t, s, akp)
+	c, cr, cs := createClient(t, s, akp, "")
 	// Wait for expiration.
 	time.Sleep(1250 * time.Millisecond)
 
@@ -551,7 +554,7 @@ func TestJWTAccountRenewFromResolver(t *testing.T) {
 	// happen automatically.
 
 	// Now make sure we can connect.
-	c, cr, cs = createClient(t, s, akp)
+	c, cr, cs = createClient(t, s, akp, "")
 	go c.parse([]byte(cs))
 	l, _ = cr.ReadString('\n')
 	if !strings.HasPrefix(l, "PONG") {
@@ -787,7 +790,7 @@ func TestJWTAccountImportExportUpdates(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, barKP)
+	c, cr, cs := createClient(t, s, barKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -913,7 +916,7 @@ func TestJWTAccountImportActivationExpires(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, barKP)
+	c, cr, cs := createClient(t, s, barKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -969,7 +972,7 @@ func TestJWTAccountLimitsSubs(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, fooKP)
+	c, cr, cs := createClient(t, s, fooKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -1065,7 +1068,7 @@ func TestJWTAccountLimitsSubsButServerOverrides(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, fooKP)
+	c, cr, cs := createClient(t, s, fooKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -1112,7 +1115,7 @@ func TestJWTAccountLimitsMaxPayload(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, fooKP)
+	c, cr, cs := createClient(t, s, fooKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -1180,7 +1183,7 @@ func TestJWTAccountLimitsMaxPayloadButServerOverrides(t *testing.T) {
 	}
 
 	// Create a client.
-	c, cr, cs := createClient(t, s, fooKP)
+	c, cr, cs := createClient(t, s, fooKP, "")
 	parseAsync, quit := genAsyncParser(c)
 	defer func() { quit <- true }()
 
@@ -1220,7 +1223,7 @@ func TestJWTAccountLimitsMaxConns(t *testing.T) {
 	newClient := func(expPre string) {
 		t.Helper()
 		// Create a client.
-		c, cr, cs := createClient(t, s, fooKP)
+		c, cr, cs := createClient(t, s, fooKP, "")
 		go c.parse([]byte(cs))
 		l, _ := cr.ReadString('\n')
 		if !strings.HasPrefix(l, expPre) {
@@ -1291,14 +1294,14 @@ func TestJWTAccountServiceImportAuthSwitch(t *testing.T) {
 	}
 
 	// Create a client that will send the request
-	ca, cra, csa := createClient(t, s, barKP)
+	ca, cra, csa := createClient(t, s, barKP, "")
 	parseAsyncA, quitA := genAsyncParser(ca)
 	defer func() { quitA <- true }()
 	parseAsyncA(csa)
 	expectPong(cra)
 
 	// Create the client that will respond to the requests.
-	cb, crb, csb := createClient(t, s, fooKP)
+	cb, crb, csb := createClient(t, s, fooKP, "")
 	parseAsyncB, quitB := genAsyncParser(cb)
 	defer func() { quitB <- true }()
 	parseAsyncB(csb)
@@ -1404,14 +1407,14 @@ func TestJWTAccountServiceImportExpires(t *testing.T) {
 	}
 
 	// Create a client that will send the request
-	ca, cra, csa := createClient(t, s, barKP)
+	ca, cra, csa := createClient(t, s, barKP, "")
 	parseAsyncA, quitA := genAsyncParser(ca)
 	defer func() { quitA <- true }()
 	parseAsyncA(csa)
 	expectPong(cra)
 
 	// Create the client that will respond to the requests.
-	cb, crb, csb := createClient(t, s, fooKP)
+	cb, crb, csb := createClient(t, s, fooKP, "")
 	parseAsyncB, quitB := genAsyncParser(cb)
 	defer func() { quitB <- true }()
 	parseAsyncB(csb)
@@ -1569,5 +1572,92 @@ func TestAccountURLResolverTimeout(t *testing.T) {
 	acc, _ := s.LookupAccount(apub)
 	if acc != nil {
 		t.Fatalf("Expected to not receive an account due to timeout")
+	}
+}
+
+func TestJWTUserSigningKey(t *testing.T) {
+	s := opTrustBasicSetup()
+	defer s.Shutdown()
+
+	// Check to make sure we would have an authTimer
+	if !s.info.AuthRequired {
+		t.Fatalf("Expect the server to require auth")
+	}
+
+	c, cr, _ := newClientForServer(s)
+	// Don't send jwt field, should fail.
+	go c.parse([]byte("CONNECT {\"verbose\":true,\"pedantic\":true}\r\nPING\r\n"))
+	l, _ := cr.ReadString('\n')
+	if !strings.HasPrefix(l, "-ERR ") {
+		t.Fatalf("Expected an error")
+	}
+
+	okp, _ := nkeys.FromSeed(oSeed)
+
+	// Create an account
+	akp, _ := nkeys.CreateAccount()
+	apub, _ := akp.PublicKey()
+
+	// Create a signing key for the account
+	askp, _ := nkeys.CreateAccount()
+	aspub, _ := askp.PublicKey()
+
+	nac := jwt.NewAccountClaims(apub)
+	ajwt, err := nac.Encode(okp)
+	if err != nil {
+		t.Fatalf("Error generating account JWT: %v", err)
+	}
+
+	// Create a client with the account signing key
+	c, cr, cs := createClient(t, s, askp, apub)
+
+	// PING needed to flush the +OK/-ERR to us.
+	// This should fail too since no account resolver is defined.
+	go c.parse([]byte(cs))
+	l, _ = cr.ReadString('\n')
+	if !strings.HasPrefix(l, "-ERR ") {
+		t.Fatalf("Expected an error")
+	}
+
+	// Ok now let's walk through and make sure all is good.
+	// We will set the account resolver by hand to a memory resolver.
+	buildMemAccResolver(s)
+	addAccountToMemResolver(s, apub, ajwt)
+
+	// Create a client with a signing key
+	c, cr, cs = createClient(t, s, askp, apub)
+	// should fail because the signing key is not known
+	go c.parse([]byte(cs))
+	l, _ = cr.ReadString('\n')
+	if !strings.HasPrefix(l, "-ERR ") {
+		t.Fatalf("Expected an error: %v", l)
+	}
+
+	// add a signing key
+	nac.AddSigningKey(aspub)
+	// update the memory resolver
+	acc, _ := s.LookupAccount(apub)
+	s.updateAccountClaims(acc, nac)
+
+	// Create a client with a signing key
+	c, cr, cs = createClient(t, s, askp, apub)
+
+	// expect this to work
+	go c.parse([]byte(cs))
+	l, _ = cr.ReadString('\n')
+	if !strings.HasPrefix(l, "PONG") {
+		t.Fatalf("Expected a PONG, got %q", l)
+	}
+
+	if c.nc == nil {
+		t.Fatal("expected client to be alive")
+	}
+	// remove the signing key should bounce client
+	nac.SigningKeys = nil
+	acc, _ = s.LookupAccount(apub)
+	s.updateAccountClaims(acc, nac)
+
+	if c.nc != nil {
+		t.Fatal("expected client to gone")
 	}
 }
